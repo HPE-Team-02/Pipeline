@@ -1,0 +1,6 @@
+minio
+python-dotenv
+pymongo
+requests
+
+pymongo
