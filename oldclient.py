@@ -459,6 +459,44 @@ def check_firmware_update_status(machine_name, base_output_dir_str="./output"):
         traceback.print_exc()
         return False
 
+# Signal file constants
+MASTER_SIGNAL_FILE = "NEEDS_MASTER"
+
+def write_master_signal(should_run_master=False):
+    """
+    Creates or removes a signal file to indicate if master.py should run.
+    
+    Args:
+        should_run_master (bool): If True, creates the signal file. If False, removes it if it exists.
+    
+    Returns:
+        bool: True if operation was successful, False otherwise.
+    """
+    try:
+        signal_file = Path(MASTER_SIGNAL_FILE)
+        
+        if should_run_master:
+            # Create signal file
+            signal_file.touch(exist_ok=True)
+            msg = f"Created signal file '{MASTER_SIGNAL_FILE}' to indicate master.py should run"
+            logging.info(msg)
+            print_step(msg)
+            return True
+        else:
+            # Remove signal file if it exists
+            if signal_file.exists():
+                signal_file.unlink()
+                msg = f"Removed signal file '{MASTER_SIGNAL_FILE}' as master.py is not needed"
+                logging.info(msg)
+                print_step(msg)
+            return True
+    except Exception as e:
+        error_msg = f"Error managing master signal file: {str(e)}"
+        logging.error(error_msg)
+        print_error(error_msg)
+        traceback.print_exc()
+        return False
+
 # Removed run_master_process() function as it's no longer called from here.
 # def run_master_process(): ...
 
@@ -587,13 +625,36 @@ def main():
         print(f"Total execution time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
         print(f"Output logs (if successful) are located in: {base_output_dir}")
         print(f"Files have also been uploaded to MinIO (if successful).")
-        print(f"You can now manually run 'python master.py' to analyze the data.")
+        
+        # Update the message based on whether master.py should run
+        if Path(MASTER_SIGNAL_FILE).exists():
+            print(f"Master.py will be executed next (via Jenkinsfile) to analyze failure data.")
+        else:
+            print(f"Master.py execution will be skipped as no failures were detected or need processing.")
         
         # Update MongoDB with machine update statistics
         if success_count > 0 or failure_count > 0:
             print_section("Updating MongoDB Analytics")
             print_step(f"Recording machine update statistics: {success_count} successes, {failure_count} failures")
             update_machine_status_counts(success_count, failure_count)
+        
+        # Check if output directory is empty or if there are any machine directories left
+        output_dirs = [d for d in base_output_dir.iterdir() if d.is_dir()]
+        output_empty = len(output_dirs) == 0
+        
+        if output_empty:
+            print_section("Output Directory Status")
+            print_warning("Output directory is empty - no machines to process with master.py")
+            print_step("Skipping master.py execution as no failures were detected or all failure data was removed")
+            write_master_signal(False)
+        elif failure_count > 0:
+            print_section("Master Processing Required")
+            print_step(f"Signal file created for master.py - {failure_count} machine failures need processing")
+            write_master_signal(True)
+        else:
+            print_section("Master Processing Not Required")
+            print_step("All machines were successful or removed - master.py will be skipped")
+            write_master_signal(False)
         
         if overall_success:
             print_success("Preparation, Extraction & Upload workflow completed successfully.")
