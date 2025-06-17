@@ -381,14 +381,15 @@ def extract_sut_info_from_log_content(log_content, uuid):
     return sut_info
 
 def find_failed_components(log_path, info_dict):
-    """Extract failed components from the server log file."""
+    """Extract failed components and their timestamps from the server log file."""
+    info_dict["Failed Timestamps"] = {}
     failed_components = set()
     try:
         with open(log_path, 'r') as f:
             content = f.read()
 
         pattern = re.compile(
-            r'Failed to update the following components .*\n((?:[^\n]*\.[^\n\s]+\s*\n)+)(?=\s*\d{4}-\d{2}-\d{2})',
+            r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} UTC).*?Failed to update the following components .*\n((?:[^\n]*\.[^\n\s]+\s*\n)+)(?=\s*\d{4}-\d{2}-\d{2}|$)',
             re.MULTILINE
         )
 
@@ -397,12 +398,14 @@ def find_failed_components(log_path, info_dict):
                              r'[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})'    # Month DD, YYYY
                              )
 
-        matches = pattern.findall(content)
+        matches = pattern.finditer(content)
         for match in matches:
+            timestamp = match.group(1)
             # Each match is a block of component lines
-            for line in match.strip().split('\n'):
+            for line in match.group(2).strip().split('\n'):
                 if not date_pattern.match(line.strip()):
                     failed_components.add(line.strip())
+                    info_dict["Failed Timestamps"][line.strip()] = timestamp
 
         info_dict["Failed Components"] = list(failed_components)
         info_dict["Number of Failed Components"] = len(failed_components)
