@@ -32,7 +32,7 @@ The system implements a modular architecture with the following key components:
 
 ## Prerequisites
 
-- Python 3.x
+- Python 3.13.2
 - Required Python packages:
 ```
 minio
